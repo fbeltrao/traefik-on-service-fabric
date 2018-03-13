@@ -20,7 +20,10 @@ Write-Host "to use a specific binary use -url arg" -foregroundcolor Green
 $outfile = $PSScriptRoot+"/../ApplicationPackageRoot/TraefikPkg/Code/traefik.exe"
 $outfileWatchdog = $PSScriptRoot+"/../ApplicationPackageRoot/Watchdog/Code/traefik-appinsights-watchdog.exe"
 
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Invoke-WebRequest -Uri $url -OutFile $outfile -UseBasicParsing
+
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Invoke-WebRequest -Uri $urlWatchdog -OutFile $outfileWatchdog -UseBasicParsing
 
 Write-Host "Download complete" -foregroundcolor Green
