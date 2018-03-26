@@ -1,0 +1,43 @@
+﻿@page
+@model StoreLocationModel
+@{
+    ViewData["Title"] = "Store Locations";
+}
+<h2>@ViewData["Title"]</h2>
+<h3>@Model.Message from (@Model.APIUrl)</h3>
+
+<div class="row">
+    <div class="col-sm-3">
+        <ul id="storeLocationsList" class="list-unstyled"></ul>
+    </div>
+    <div class="col-sm-9">
+        <script src="https://gist.github.com/fbeltrao/e7d9843b56fda713b9e29105f2b3fd79.js"></script>
+    </div>
+</div>
+
+<script type="text/javascript">
+    var requestUrl = '@Model.APIUrl';
+    var request = new XMLHttpRequest();
+    request.open('GET', requestUrl, true);
+
+
+    request.onload = function () {
+        if (request.readyState == 4) {
+            var storeLocations = JSON.parse(request.responseText);
+            for (var i = 0; i < storeLocations.length; ++i) {
+                var liItem = document.createElement("li");
+                var title = document.createElement("h4");
+                title.innerText = storeLocations[i].city;
+                liItem.appendChild(title);
+
+                var address = document.createElement("address");
+                address.innerHTML = storeLocations[i].address + "<br>" + storeLocations[i].city + " - " + storeLocations[i].country;
+                liItem.appendChild(address);
+
+                document.getElementById("storeLocationsList").appendChild(liItem);
+            }
+        }
+    };
+
+    request.send();
+</script>

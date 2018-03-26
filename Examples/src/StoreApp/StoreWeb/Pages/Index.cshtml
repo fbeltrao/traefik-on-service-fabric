@@ -1,0 +1,35 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Home page";
+}
+
+<div class="jumbotron">
+    <h1>Store Web</h1>
+    <p>Web application running on Service Fabric</p>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <h2>Products</h2>
+        <ul>
+            @foreach (var product in Model.Products)
+            {
+                <li>
+                    <strong>@product["name"]</strong>
+                    <p>@product["description"]</p>
+                    <p>$@product["price"]</p>
+                </li>
+
+            }
+        </ul>
+    </div>
+    <div class="col-md-6">
+        <h2>Run &amp; Deploy</h2>
+        <ul>
+            <li><a href="https://go.microsoft.com/fwlink/?LinkID=517851">Run your app</a></li>
+            <li><a href="https://go.microsoft.com/fwlink/?LinkID=517853">Run tools such as EF migrations and more</a></li>
+            <li><a href="https://go.microsoft.com/fwlink/?LinkID=398609">Publish to Microsoft Azure App Service</a></li>
+        </ul>
+    </div>
+</div>
