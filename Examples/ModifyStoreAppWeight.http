@@ -1,0 +1,53 @@
+### Set v1 of store web to weight 0, to send most traffic to v2
+PUT http://localhost:19080/Names/StoreApp/StoreWeb/$/GetProperty?api-version=6.0&IncludeValues=true HTTP/1.1
+content-type: application/json
+
+{
+  "PropertyName": "traefik.backend.group.weight",
+  "Value": {
+    "Kind": "String",
+    "Data": "0"
+  },
+  "CustomTypeId": "LabelType"
+}
+
+
+### Set v2 of store web to weight 100, to receive most of the requests
+PUT http://localhost:19080/Names/StoreApp_v2/StoreWeb/$/GetProperty?api-version=6.0&IncludeValues=true HTTP/1.1
+content-type: application/json
+
+{
+  "PropertyName": "traefik.backend.group.weight",
+  "Value": {
+    "Kind": "String",
+    "Data": "100"
+  },
+  "CustomTypeId": "LabelType"
+}
+
+### Set v1 of location api to weight 0, to send most requests to v2
+PUT http://localhost:19080/Names/StoreApp/StoreLocationAPI/$/GetProperty?api-version=6.0&IncludeValues=true HTTP/1.1
+content-type: application/json
+
+{
+  "PropertyName": "traefik.backend.group.weight",
+  "Value": {
+    "Kind": "String",
+    "Data": "0"
+  },
+  "CustomTypeId": "LabelType"
+}
+
+
+### Set v2 of location api to weight 100, to send most requests to v2
+PUT http://localhost:19080/Names/StoreApp_v2/StoreLocationAPI/$/GetProperty?api-version=6.0&IncludeValues=true HTTP/1.1
+content-type: application/json
+
+{
+  "PropertyName": "traefik.backend.group.weight",
+  "Value": {
+    "Kind": "String",
+    "Data": "100"
+  },
+  "CustomTypeId": "LabelType"
+}

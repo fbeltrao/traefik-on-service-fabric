@@ -1,13 +1,14 @@
 # Example
 
-This document aims to help people without much experience in Service Fabric and Traefik in setting up a working solution.
+This document aims to help people without much experience in Service Fabric and/or Traefik in setting up a working solution.
 
-It will be divided in following challenges:
+The idea is to complete challenges in order to have a final solution. The challenges have been divided the following way:
 
 1. Adding Traefik to a Service Fabric Cluster
 2. Setting up routing for 3 web applications (2 apis, 1 web) based on pathing.  /api/product => goes to product service, /api/products goes to products
-3. [Optional] Using Traefik to handle https requests
-4. [Optional] Canary releases with Traefik
+3. Deploying solution to Azure
+4. Using Traefik to handle https requests
+5. Canary releases with Traefik
 
 ## Prerequisites
 
@@ -67,7 +68,7 @@ The Store App services deployed in our local cluster have different port binding
 
 Note: In the local cluster the domain name will be localhost. When deploying to Azure (or another cloud provider) you can apply your own CNAME rule to customize it.
 
-Traefik routing rules in Service Fabric are resolved from Service manifests extensions configuration (with prefix "traefik."). In order to customize the routing we need to modify the ServiceManifest.xml files of our previously deployed Store app.
+Traefik routing rules in Service Fabric are resolved from Service manifests extensions configuration (with prefix "traefik."). In order to customize the routing we need to modify the ServiceManifest.xml files of our previously deployed Store app. For a list of all possible extension value check the [documentation](https://master--traefik-docs.netlify.com/configuration/backends/servicefabric/#available-labels)
 
 1. Set Product API route to be /api/product by editing the ServiceManifest.xml file. To do so add an extension to the service definition to tell Traefik that all requests to /api/product should be binded to this service
     ```xml
@@ -212,8 +213,182 @@ For more possibilities check the [Traefik documentation](https://docs.traefik.io
 
 A working example of the solution can be found on this repository under Examples\src\challenges\2\StoreApp in case you have problems making it work.
 
-## Challenge 3: Adding HTTPS support on Traefik
+## Challenge 3: Deploying to Azure
 
-In an production environment it is a common scenario to use Traefik to handle HTTPS requests.
+Deploying Traefik in Azure Service Fabric requires an additional step. We need to configure Traefik with the cluster certificate in order for it to be to call the Service Fabric Management API. Currently this is only possible using a PEM formatted certificate.
 
-To do so we need to change the Traefik deployment to listen on port 443. Additionally we need to add the respective certificates.
+Assuming that a Service Fabric cluster has been created in Azure using a certificate store in Azure Vault, those would be the steps necessary to install Traefik on the cluster.
+
+1. Download the certificate from your Azure Vault using the Powershell script GetVaultCertificate.ps1. It will install the certificate locally (so you can access your cluster in Azure from the browser, write the .pfx certificate at the Desktop folder and write the password to console)
+
+1. Generate a key and crt files the following way:
+I am using Bash on Windows. To have access to Windows C:/ drive you can type on bash "cd /mnt/c".
+```bash
+openssl pkcs12 -in <filename>.pfx -nocerts -nodes -out <filename>.key
+Enter Import Password: <enter the pasword provided by the powershell script before>
+
+openssl pkcs12 -in <filename>.pfx -clcerts -nokeys -out <filename>.crt
+Enter Import Password: <enter the pasword provided by the powershell script before>
+```
+Tip: You can "Mouse Right Click" to copy the password to bash, don't need to type it ;)
+
+2. Copy the 2 generated files (.key, .crt) to the Traefik Service Fabric project under TraefikPkg/Code/certs
+
+3. Configure Traefik to access Service Fabric Management API through https using the certificates we generated previously by modifying the file TraefikPkg/Code/traefik.toml
+```toml
+################################################################
+# Service Fabric provider
+################################################################
+
+# Enable Service Fabric configuration backend
+[servicefabric]
+
+# Service Fabric Management Endpoint
+clustermanagementurl = "https://localhost:19080"
+
+# Service Fabric Management Endpoint API Version
+apiversion = "3.0"
+
+# Enable TLS connection.
+[serviceFabric.tls]
+cert = "certs/<your-certificate-file>.crt"
+key = "certs/<your-certificate-file>.key"
+insecureskipverify = true
+```
+
+4. Publish the Traefik to Azure using Visual Studio (remember to choose the Cloud profile)
+
+5. Publish the Store App to Azure using Visual Studio (remember to choose the Cloud profile)
+
+6. Test the application by opening the browser on http://<clusterfqdn>.<region>.cloudapp.azure.com. You should see the web site running. If nothing comes up ensure that the port 80 is open on the Azure Load Balancer.
+![Azure Service Fabric Load Balancer Rules](images/azure-service-fabric-lb-rules.png)
+
+## Challenge 4: Adding HTTPS support on Traefik
+
+In a production environment it is a common scenario to expose services to the outside world using HTTPS. Traefik can be used to handle those.
+
+To do so we need to change the Traefik deployment to listen on port 443. Additionally we need to add the respective TLS certificates.
+
+1. Change Traefik service to use port 443 instead of 80 by modifying the TraefikTypeEndpoint in TraefikPkg ServiceManifest.xml file.
+```xml
+<Endpoint Name="TraefikTypeEndpoint" UriScheme="http" Port="443" />
+```
+1. Copy the TLS certificates for SSL to to the folder TraefikPkg/Code/certs (again pair of .crt and .key files). For testing purposes we can use the same certificate files used to connect to our cluster in Azure, we just need to accept the browser warning about the insecure certificate.
+
+1. Change Traefik endpoints to defaut to https using the tls certificates we copied in previous step
+```toml
+# Entrypoints to be used by frontends that do not specify any entrypoint.
+# Each frontend can specify its own entrypoints.
+#
+# Optional
+# Default: ["http"]
+#
+defaultEntryPoints = ["https"]
+
+# Entrypoints definition
+#
+# Optional
+# Default:
+[entryPoints]
+[entryPoints.https]
+address = ":443"
+  [entryPoints.https.tls]
+    [[entryPoints.https.tls.certificates]]
+    certFile = "certs/<your-tls-certificate>.crt"
+    keyFile = "certs/<your-tls-certificate>.key"
+[entryPoints.traefik]
+address = ":8080"
+```
+1. Publish to Azure once again. 
+1. Configure your domain CNAME to target your cluster URL/IP.
+1. The Store Web application should now be available on https://{your-domain}. If not, ensure that the port 443 is enabled in the Azure Load Balancer.
+
+## Challenge 5: Canary release with Traefik
+
+Canary release is a way we can slowly release new software versions by only redirecting a porting of the traffic to the newest version in order to minimize risks. After verifying that the newly deployed version is behaving as expected we can remove the older version and redirect all traffic to the latest version.
+
+For this scenario we are going to support multi version deployments of the StoreApp by creating a branch v2, pumping all versions to 2.0.0 and deploying it under the name fabric/StoreApp_v2, this way version 1.0.0 will stay co-exist.
+
+Before we deploy the application we need to change the Traefik extensions in each service to use backend groups. Backend groups allow a single frontend (/, /api/location and /api/product) to be served by multiple backends ( "/" => fabric:/StoreApp/StoreWeb, fabric:/StoreApp_v2/StoreWeb). We then define the distribution of each backend using a weight.
+
+This is the step by step guide in making a canary release of Store from version 1 to version 2.
+
+1. Open the StoreApp solution
+
+2. Redefine the StoreWeb Traefik extensions using backend group "store-web"
+```xml
+<Extension Name="Traefik">
+  <Labels xmlns="http://schemas.microsoft.com/2015/03/fabact-no-schema">
+    <Label Key="traefik.backend.group.name">store-web</Label>
+    <Label Key="traefik.backend.group.weight">3</Label>
+    <Label Key="traefik.frontend.rule">PathPrefix: /</Label>
+    <Label Key="traefik.frontend.passHostHeader">true</Label>
+  </Labels>
+</Extension>
+```
+
+3. Redefine the StoreLocationAPI Traefik extensions using backend group "store-api-location"
+```xml
+<Extension Name="Traefik">
+  <Labels xmlns="http://schemas.microsoft.com/2015/03/fabact-no-schema">
+    <Label Key="traefik.backend.group.name">store-api-location</Label>
+    <Label Key="traefik.backend.group.weight">3</Label>
+    <Label Key="traefik.frontend.rule">PathPrefix: /api/location</Label>
+    <Label Key="traefik.frontend.passHostHeader">true</Label>
+  </Labels>
+</Extension>
+```
+
+4. Redefine the StoreProductAPI Traefik extensions using backend group "store-api-product"
+```xml
+<Extension Name="Traefik">
+  <Labels xmlns="http://schemas.microsoft.com/2015/03/fabact-no-schema">
+    <Label Key="traefik.backend.group.name">store-api-product</Label>
+    <Label Key="traefik.backend.group.weight">3</Label>
+    <Label Key="traefik.frontend.rule">PathPrefix: /api/product</Label>
+    <Label Key="traefik.frontend.passHostHeader">true</Label>
+  </Labels>
+</Extension>
+```
+
+5. Publish the application to your local Service Fabric Cluster. After the deployment check that the Traefik Dashboard (http://localhost:8080) has the frontend and backend configuration as above defined.
+![Traekif Dashboard](images/traefik-dashboard-custom-backends-v1.png)
+
+6. To simulate the v2 of the project make a copy of the whole solution to another folder and open it
+
+7. We need to pump the version of all services from 1.0.0 to 2.0.0. Easiest way is to search the whole solution for 1.0.0 and manually replace by 2.0.0.
+
+8. Now change the name of how version 2 will be deployed in Service Fabric by editing the file StoreApp\ApplicationParameters\Local.1Node.xml changing the attribute name from "fabric:/StoreApp" to fabric:/StoreApp_v2
+
+9. To start the new deployment receiving 1/3 of the traffic change in ServiceManifest.xml files the weight from "3" to "1"
+
+10. Still applying changes to the ServiceManifest.xml  files we need to remove the Endpoint fix ports from the 3 services. The reason is that we will have multiple versions of the same application running simultaneously therefore we cannot a port that has been already allocated. Simply remove the attribute "Port" from the Endpoint
+```xml
+<Endpoint Protocol="http" Name="ServiceEndpoint" Type="Input" />
+```
+
+11. Publish the v2 of the Application to your local cluster. After the deployment finished the Traefik dashboard should have multiple servers per backend, as the picture below:
+![Traefik Dashboard after deploying v2 of our application](images/traefik-dashboard-custom-backends-v2.png)
+
+12. Hitting http://localhost should get you roughly 2/3 of requests showing v1.0.0 and 1/3 v2.0.0 in the page footer.
+![Store Web version](images/store-web-footer-version.png)
+
+By changing the weight of each service you can now control the request ratio each version will receive. As explained in the [startup documentation](../) it is possible to change the Service Manifest properties through the API. The included file "ModifyStoreAppWeight.http" has the requests ready to change the location api and the store web weights. To use it, install/open Visual Studio Code and install the Rest Client.
+
+A REST request in http file looks like this:
+```
+### Set v1 of store web to weight 0, to send most traffic to v2
+PUT http://localhost:19080/Names/StoreApp/StoreWeb/$/GetProperty?api-version=6.0&IncludeValues=true HTTP/1.1
+content-type: application/json
+
+{
+  "PropertyName": "traefik.backend.group.weight",
+  "Value": {
+    "Kind": "String",
+    "Data": "0"
+  },
+  "CustomTypeId": "LabelType"
+}
+```
+
+A working version of this challenge (including a solution for v1 and another for v2) can be found in folder Examples\src\challenges\5\ in this repository.
