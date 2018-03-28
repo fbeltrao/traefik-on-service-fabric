@@ -313,13 +313,14 @@ In a production environment it is a common scenario to expose services to the ou
 
 To do so we need to change the Traefik deployment to listen on port 443. Additionally we need to add the respective TLS certificates.
 
-1. Change Traefik service to use port 443 instead of 80 by modifying the TraefikTypeEndpoint in TraefikPkg ServiceManifest.xml file.
+1. Change Traefik service to use port **443** instead of **80** by modifying the TraefikTypeEndpoint in TraefikPkg ServiceManifest.xml file. Also change the UriScheme from **http** to **https**
 ```xml
-<Endpoint Name="TraefikTypeEndpoint" UriScheme="http" Port="443" />
+<Endpoint Name="TraefikTypeEndpoint" UriScheme="https" Port="443" />
 ```
-1. Copy the TLS certificates for SSL into folder TraefikPkg/Code/certs (pair of .crt and .key files). For testing purposes we can use the same certificate files used to connect to our cluster in Azure. In this case need to accept the browser warning about the insecure certificate.
+2. Copy the TLS certificates for SSL into folder TraefikPkg/Code/certs (pair of .crt and .key files). For testing purposes we can use the same certificate files used to connect to our cluster in Azure. In this case need to accept the browser warning about the insecure certificate.\
+**Note:** Using a certificate purchased directly from Azure (signed by GoDaddy) was a bit challenging. [Read this section](#usingazurecertificate) to see the problem and how it can be solved.
 
-1. Change Traefik endpoints to defaut to https with the tls certificates we copied in previous step
+3. Change Traefik endpoints to defaut to https with the tls certificates we copied in previous step
 ```toml
 # Entrypoints to be used by frontends that do not specify any entrypoint.
 # Each frontend can specify its own entrypoints.
@@ -343,9 +344,17 @@ address = ":443"
 [entryPoints.traefik]
 address = ":8080"
 ```
-3. Publish to Azure once again. 
-4. Configure your domain CNAME to target your cluster URL/IP.
-5. The Store Web application should now be available on https://{your-domain}. If not, ensure that the port 443 is enabled in the Azure Load Balancer. In case the Service Fabric was used to test the deployment the URL to test is https://{clusterfqdn}.{region}.cloudapp.azure.com
+4. Publish to Azure once again.
+5. Configure your domain CNAME to target your cluster URL/IP.
+6. The Store Web application should now be available on https://{your-domain}. If not, ensure that the port 443 is enabled in the Azure Load Balancer. In case the Service Fabric was used to test the deployment the URL to test is https://{clusterfqdn}.{region}.cloudapp.azure.com
+
+### <a name="usingazurecertificate">Using Azure/GoDaddy SSL certificate in Traefik</a>
+
+Extracting the CER/KEY files from a PFX as described in this documentation caused the CER file to be incomplete (the chain was missing). This [ssl validation tool](https://www.ssllabs.com/ssltest/analyze.html) degraded the SSL certificate from A to B, stating that the chain was incomplete. Note that browsers shown the SSL certificate as being valid, but Postman failed (with the **verify SSL** option **ON**).
+
+The problem was solved by running `openssl pkcs12 -in <filename>.pfx -clcerts *-cacerts* -nokeys -out <filename>.crt`. This dumps the **CA** certificates into the CRT file too, not just the **CL(ient)** certificates. Doing this way will cause a **public key does not match private key** error in Traefik.
+
+After further investigation, it seems that the order in which the **openssl** tool generates the CA+CL certificates is like this: ROOT CA &rarr; Intermediary CA &rarr; CL cert. This was valid for GoDaddy certificates, other CAs might have more intermediaries, or none. However, Traefik seems to expect a reverse order: CL &rarr; Intermediary CA &rarr; Root CA. Reversing the CRT file by hand worked. At the time of writing we haven’t found a way to generate the CRT file in reverse order, maybe others have already figured this out. Please let us know in case you have a better approach :)
 
 ## <a name="challenge5">Challenge 5: Canary release with Traefik</a>
 
